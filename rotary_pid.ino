@@ -309,9 +309,6 @@ void setRelay(bool enabled) {
 
   oldRelayEnabled = enabled;
   
-  //Serial.print("Relay Enabled: ");
-  //Serial.println(enabled);
-  
   // set the relay pin
   digitalWrite(RELAY_PIN, enabled ? HIGH : LOW);
 
@@ -374,7 +371,6 @@ void updateToggleState() {
 
   boolean inDebounce = now - lastTogglePush <= TOGGLE_DEBOUNCE;
   if(!wasPushed && isPushed && !inDebounce) {
-    Serial.println("toggle pushed");
     toggleState = !toggleState;
     lastTogglePush = now;
     setDisplayCelsius(toggleState);
