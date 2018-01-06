@@ -73,10 +73,6 @@ char degreesBuff[5];
 int tempReadInterval=500;
 int lastTempReadTime = 0;
 
-float oldDisplaySetPointC = -1.0;
-float oldOutput = -1.0;
-boolean displayCelsius = false;
-
 //////////////////////////////
 // Relay Window
 //////////////////////////////
@@ -96,6 +92,7 @@ struct Settings {
 #define SETTINGS_WRITE_INTERVAL 10000
 #define CHECK_VAL 0x69
 Settings settings;
+boolean displayCelsius = false;
 long lastSettingsWrite;
 
 //////////////////////////////
@@ -117,6 +114,7 @@ boolean encoderWasFast = false;
 #define TOGGLE_DEBOUNCE 200
 boolean toggleState = false;
 long lastTogglePush = 0;
+boolean wasPushed = false;
 
 void setup() {
   // Setup Serial output
@@ -361,10 +359,6 @@ float fToC(float f) {
 void setDisplayCelsius(boolean newDisplayCelsius) {
   if(newDisplayCelsius == displayCelsius) return;
   displayCelsius = newDisplayCelsius;
-  Serial.print("displayCelsius: ");
-  Serial.println(displayCelsius);
-  oldDisplaySetPointC = -1.0;
-  oldOutput = -1.0;
 }
 
 //////////////////////////////
@@ -377,12 +371,16 @@ void setupToggle() {
 void updateToggleState() {
   boolean isPushed = digitalRead(TOGGLE_BUTTON_PIN);
   long now = millis();
-  
-  if(isPushed && now - lastTogglePush > TOGGLE_DEBOUNCE) {
+
+  boolean inDebounce = now - lastTogglePush <= TOGGLE_DEBOUNCE;
+  if(!wasPushed && isPushed && !inDebounce) {
     Serial.println("toggle pushed");
     toggleState = !toggleState;
     lastTogglePush = now;
     setDisplayCelsius(toggleState);
+  }
+  if(!inDebounce) {
+    wasPushed = isPushed;
   }
 }
 
