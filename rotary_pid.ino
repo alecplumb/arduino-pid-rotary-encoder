@@ -24,6 +24,7 @@ byte degreeChar[8]  = {
   0b00000,
   0b00000
 };
+
 #define UP_CHAR 1
 byte upChar[8] = {
   0b00100,
@@ -47,32 +48,34 @@ byte happyChar[8] = {
   0b00000
 };
 
-#define DEFAULT_SET_POINT 90.0
-#define MIN_SET_POINT 32.0
-#define MAX_SET_POINT 1200.0
-#define BANG_ON 50.0
-#define BANG_OFF 25.0
+#define DEFAULT_SET_POINT_C 371.111  // 700°F
+#define MIN_SET_POINT_C 0.0  // °C
+#define MAX_SET_POINT_C 1024.0  // °C
+#define BANG_ON_C 50.0 // Turn relay fully on if PV is more than this below the setpoint
+#define BANG_OFF_C 25.0 // Turn relay fully off if PV is more than this above the setpoint
 
 //////////////////////////////
 // PID 
 //////////////////////////////
-double inputTemp; // °F
-double setPointTemp = -1.0; // °F
+double inputTempC; // °C
+double setPointTempC = -1.0; // °C
 double pidOutput;
 
+// These tunings are almost entirely arbitrary, and should be tuned.
 #define KP 2
 #define KI 5
 #define KD 1
 
 //Specify the links and initial tuning parameters
-PID myPID(&inputTemp, &pidOutput, &setPointTemp, KP, KI, KD, P_ON_E, DIRECT);
+PID myPID(&inputTempC, &pidOutput, &setPointTempC, KP, KI, KD, P_ON_E, DIRECT);
 
 char degreesBuff[5];
 int tempReadInterval=500;
 int lastTempReadTime = 0;
 
-float oldSetPoint = -1.0;
+float oldDisplaySetPointC = -1.0;
 float oldOutput = -1.0;
+boolean displayCelsius = false;
 
 //////////////////////////////
 // Relay Window
@@ -86,7 +89,8 @@ bool oldRelayEnabled = true; // we will initialize to false in setup, triggering
 //////////////////////////////
 struct Settings {
   byte checkVal;
-  double setPoint;
+  double setPointC;
+  boolean displayCelsius;
 };
 
 #define SETTINGS_WRITE_INTERVAL 10000
@@ -106,12 +110,21 @@ int oldEncoderPos = 0;
 long lastEncoderRead;
 boolean encoderWasFast = false;
 
+//////////////////////////////
+// Toggle Button
+//////////////////////////////
+#define TOGGLE_BUTTON_PIN A0
+#define TOGGLE_DEBOUNCE 200
+boolean toggleState = false;
+long lastTogglePush = 0;
+
 void setup() {
   // Setup Serial output
   Serial.begin(9600);
 
   setupSettings();
   setupEncoder();
+  setupToggle();
   
   // Setup Relay
   pinMode(RELAY_PIN, OUTPUT);
@@ -139,32 +152,30 @@ void setup() {
 void loop() {
 
   readEncoder();
+  updateToggleState();
   updateSettings();
-    
-  if(oldSetPoint != setPointTemp) {
-    oldSetPoint = setPointTemp;
-    lcd.setCursor(9, 0);
-    printDegrees(setPointTemp);
-  }
   
-  if(oldOutput != pidOutput) {
-    oldOutput = pidOutput;
-    lcd.setCursor(0, 1);
-    sprintf(degreesBuff, "%4d", (int)pidOutput);
-    lcd.print(degreesBuff);
-  }
-  if(updateTemp()) {
-    // go to line #1
-    lcd.setCursor(9, 1);
-    printDegrees(inputTemp);
-  }
+  // Show setpoint temp
+  lcd.setCursor(9, 0);
+  printDegrees(setPointTempC);
+
+  updateTemp()  ;
+    
+  // Show current temp
+  lcd.setCursor(9, 1);
+  printDegrees(inputTempC);
 
   myPID.Compute();
   
+  // Show Output
+  lcd.setCursor(0, 1);
+  sprintf(degreesBuff, "%4d", (int)pidOutput);
+  lcd.print(degreesBuff);
+ 
   // if we are more than BANG_ON degrees below the setpoint, then always turn on the relay.
-  if( inputTemp + BANG_ON < setPointTemp ) setRelay(true);
+  if( inputTempC + BANG_ON_C < setPointTempC ) setRelay(true);
   // if we are more than BANG_OFF degrees above the setpoint, then always turn
-  else if( inputTemp - BANG_OFF > setPointTemp ) setRelay(false);
+  else if( inputTempC - BANG_OFF_C > setPointTempC ) setRelay(false);
   else {
     // if we are inside the BANG range, turn on the relay for a portion of the Relay Window
     // based on the pidOutput
@@ -209,10 +220,13 @@ void readEncoder() {
 
   double deltaAbs = fabs(delta);
   double deltaSign = delta / deltaAbs;
+
+  double displaySetPoint = setPointTempC;
+  if(!displayCelsius) displaySetPoint = cToF(setPointTempC);
   
   // if it was a single click, change by one
   if(deltaAbs < 2) {
-    if(!encoderWasFast) setSetPointTemp(setPointTemp + delta);
+    if(!encoderWasFast) setDisplaySetPointTemp(displaySetPoint + delta);
     encoderWasFast = false;
   return;
   }
@@ -220,7 +234,7 @@ void readEncoder() {
   // otherwise, change by 5 for each additional click, and round to nearest 5
   encoderWasFast = true;
   delta = (deltaAbs - 1) * deltaSign * 5;
-  setSetPointTemp(round((setPointTemp + delta) / 5) * 5);
+  setDisplaySetPointTemp(round((displaySetPoint + delta) / 5) * 5);
 }
 
 // Interrupt on A changing state
@@ -243,19 +257,24 @@ void setupSettings() {
   printSettings();
   
   if(settings.checkVal == CHECK_VAL) {
-    setSetPointTemp(settings.setPoint);
+    setPointTempC = settings.setPointC;
+    displayCelsius = settings.displayCelsius;
   } else {
-    setSetPointTemp(DEFAULT_SET_POINT);
+    setPointTempC = DEFAULT_SET_POINT_C;
+    displayCelsius = false;
   }
+  toggleState = displayCelsius;
 }
 
-void setSetPointTemp(double newSetPoint) {
-  if(isnan(newSetPoint)) newSetPoint = DEFAULT_SET_POINT;
-  newSetPoint = min(newSetPoint, MAX_SET_POINT);
-  newSetPoint = max(newSetPoint, MIN_SET_POINT);
-  if(newSetPoint == setPointTemp) return;
+void setDisplaySetPointTemp(double newSetPoint) {
+  if(!displayCelsius) newSetPoint = fToC(newSetPoint);
+  if(isnan(newSetPoint)) newSetPoint = DEFAULT_SET_POINT_C;
+  
+  newSetPoint = min(newSetPoint, MAX_SET_POINT_C);
+  newSetPoint = max(newSetPoint, MIN_SET_POINT_C);
+  if(newSetPoint == setPointTempC) return;
 
-  setPointTemp = newSetPoint;
+  setPointTempC = newSetPoint;
 }
 
 // Write the settings if theyhave changed. Will only write as often as SETTINGS_WRITE_INTERVAL.
@@ -264,10 +283,13 @@ void updateSettings() {
   long now = millis();
   if(now - lastSettingsWrite < SETTINGS_WRITE_INTERVAL) return;
   
-  if(settings.checkVal != CHECK_VAL || settings.setPoint != setPointTemp) {
+  if(settings.checkVal != CHECK_VAL 
+      || settings.setPointC != setPointTempC
+      || settings.displayCelsius != displayCelsius) {
     settings.checkVal = CHECK_VAL;
-    settings.setPoint = setPointTemp;
-
+    settings.setPointC = setPointTempC;
+    settings.displayCelsius = displayCelsius;
+    
     Serial.print("updateSettings ");
     printSettings();
     EEPROM.put(0, settings);
@@ -278,8 +300,10 @@ void updateSettings() {
 void printSettings() {
   Serial.print("checkVal: ");
   Serial.print(settings.checkVal);
-  Serial.print(", setPoint: ");
-  Serial.println(settings.setPoint);
+  Serial.print(", setPointC: ");
+  Serial.print(settings.setPointC);
+  Serial.print(", displayCelsius: ");
+  Serial.println(settings.displayCelsius);
 }
 
 void setRelay(bool enabled) {
@@ -304,25 +328,61 @@ bool updateTemp() {
   int now = millis();
   if(now - lastTempReadTime < tempReadInterval) return false;
   lastTempReadTime = now;
-  float newTemp = thermocouple.readFarenheit();
+  float newTemp = thermocouple.readCelsius();
   //Serial.print("Read temp:");
   //Serial.print(newTemp);
-  //Serial.println(" degrees F");
-  if(newTemp == inputTemp) {
+  //Serial.println(" degrees C");
+  if(newTemp == inputTempC) {
     return false;
   }
-  inputTemp = newTemp;
+  inputTempC = newTemp;
   return true;
 }
 
-void printDegrees(double temp) {
+void printDegrees(double tempC) {
+  double temp = tempC;
+  if(!displayCelsius) temp = cToF(tempC);
+  temp = round(temp);
   sprintf(degreesBuff, "%4d", (int)temp);
   lcd.print(degreesBuff);
   lcd.write((byte)DEGREE_CHAR);
-  lcd.print("F");
+  if(displayCelsius) lcd.print("C");
+  else(lcd.print("F"));
 }
 
 float cToF(float c) {
   return (c * 9 / 5) + 32;
+}
+
+float fToC(float f) {
+  return (f - 32) * 5 / 9;
+}
+
+void setDisplayCelsius(boolean newDisplayCelsius) {
+  if(newDisplayCelsius == displayCelsius) return;
+  displayCelsius = newDisplayCelsius;
+  Serial.print("displayCelsius: ");
+  Serial.println(displayCelsius);
+  oldDisplaySetPointC = -1.0;
+  oldOutput = -1.0;
+}
+
+//////////////////////////////
+// Toggle Button
+//////////////////////////////
+void setupToggle() {
+  pinMode(TOGGLE_BUTTON_PIN, INPUT);
+}
+
+void updateToggleState() {
+  boolean isPushed = digitalRead(TOGGLE_BUTTON_PIN);
+  long now = millis();
+  
+  if(isPushed && now - lastTogglePush > TOGGLE_DEBOUNCE) {
+    Serial.println("toggle pushed");
+    toggleState = !toggleState;
+    lastTogglePush = now;
+    setDisplayCelsius(toggleState);
+  }
 }
 
