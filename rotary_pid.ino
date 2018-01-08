@@ -2,12 +2,13 @@
 // www.ladyada.net/learn/sensors/thermocouple
 
 #include <max6675.h>
-#include <LiquidCrystal.h>
+#include <LiquidCrystal_I2C.h>
 #include <Wire.h>
 #include <PID_v1.h>
 #include <EEPROM.h>
 
-LiquidCrystal lcd(4,5,6,7,8,9); // RS, E, D4, D5, D6, D7
+#define LCD_ADDR 0x27
+LiquidCrystal_I2C lcd(0x27,16,2); // RS, E, D4, D5, D6, D7
 
 MAX6675 thermocouple(10, 11, 12); // CLK, CS, D0
 
@@ -51,8 +52,8 @@ byte happyChar[8] = {
 #define DEFAULT_SET_POINT_C 371.111  // 700°F
 #define MIN_SET_POINT_C 0.0  // °C
 #define MAX_SET_POINT_C 1024.0  // °C
-#define BANG_ON_C 50.0 // Turn relay fully on if PV is more than this below the setpoint
-#define BANG_OFF_C 25.0 // Turn relay fully off if PV is more than this above the setpoint
+#define BANG_ON_C 27.77777 // 50°F Turn relay fully on if PV is more than this below the setpoint
+#define BANG_OFF_C 13.88888 // 25°F Turn relay fully off if PV is more than this above the setpoint
 
 //////////////////////////////
 // PID 
@@ -136,7 +137,8 @@ void setup() {
   myPID.SetMode(AUTOMATIC);
   
   // Setup LCD
-  lcd.begin(16, 2);
+  lcd.init();
+  lcd.backlight();
   lcd.createChar(DEGREE_CHAR, degreeChar);
   lcd.createChar(UP_CHAR, upChar);
   lcd.createChar(HAPPY_CHAR, happyChar);
@@ -304,6 +306,9 @@ void printSettings() {
   Serial.println(settings.displayCelsius);
 }
 
+////////////////////////////////
+// Relay
+////////////////////////////////
 void setRelay(bool enabled) {
   if(enabled == oldRelayEnabled) return;
 
@@ -318,6 +323,9 @@ void setRelay(bool enabled) {
   else lcd.print(" ");
 }
 
+////////////////////////////////
+// Temperature
+////////////////////////////////
 //return true if the temp has changed.
 bool updateTemp() {
   int now = millis();
