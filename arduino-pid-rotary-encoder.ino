@@ -1,5 +1,16 @@
-// this example is public domain. enjoy!
-// www.ladyada.net/learn/sensors/thermocouple
+//  Copyright 2018 Alec B. Plumb
+//  
+//  Licensed under the Apache License, Version 2.0 (the "License");
+//  you may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at
+//  
+//      http://www.apache.org/licenses/LICENSE-2.0
+//  
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
 
 #include <max6675.h>
 #include <LiquidCrystal_I2C.h>
@@ -8,7 +19,7 @@
 #include <EEPROM.h>
 
 #define LCD_ADDR 0x27
-LiquidCrystal_I2C lcd(0x27, 16, 2); // RS, E, D4, D5, D6, D7
+LiquidCrystal_I2C lcd(LCD_ADDR, 16, 2);
 
 MAX6675 thermocouple(11, 10, 9); // CLK, CS, D0
 
@@ -36,17 +47,6 @@ byte upChar[8] = {
   0b00100,
   0b00100,
   0b00100
-};
-#define HAPPY_CHAR 2
-byte happyChar[8] = {
-  0b00000,
-  0b00000,
-  0b01010,
-  0b00000,
-  0b10001,
-  0b01110,
-  0b00000,
-  0b00000
 };
 
 #define DEFAULT_SET_POINT_C 371.111  // 700°F
@@ -142,8 +142,7 @@ void setup() {
   lcd.backlight();
   lcd.createChar(DEGREE_CHAR, degreeChar);
   lcd.createChar(UP_CHAR, upChar);
-  lcd.createChar(HAPPY_CHAR, happyChar);
-  
+ 
   lcd.setCursor(7, 0);
   lcd.print("S:");
   lcd.setCursor(7, 1);
