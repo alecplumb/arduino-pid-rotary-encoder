@@ -113,9 +113,10 @@ boolean encoderWasFast = false;
 //////////////////////////////
 #define TOGGLE_BUTTON_PIN 4
 #define TOGGLE_DEBOUNCE 200
-boolean toggleState = false;
-long lastTogglePush = 0;
-boolean wasPushed = false;
+// Note that the toggle is wired backwards, so the toggle logic is inverted
+bool toggleState = false;
+int togglePrevious = HIGH;
+long lastToggleTime = 0;
 
 void setup() {
   // Setup Serial output
@@ -159,32 +160,48 @@ void loop() {
   lcd.setCursor(9, 0);
   printDegrees(setPointTempC);
 
-  updateTemp()  ;
+  updateTemp();
     
-  // Show current temp
-  lcd.setCursor(9, 1);
-  printDegrees(inputTempC);
+  if( isnan(inputTempC) ) {
+    // No probe is connected, there is nothing to do.
+    lcd.setCursor(9,1);
+    lcd.print("------");
+    myPID.SetMode(MANUAL);
+    pidOutput = 0;
+  } else {
+    // Show current temp
+    lcd.setCursor(9, 1);
+    printDegrees(inputTempC);
 
+    // if we are more than BANG_ON degrees below the setpoint, then always turn on the relay.
+    if( inputTempC + BANG_ON_C < setPointTempC ) {
+      myPID.SetMode(MANUAL);
+      pidOutput = WindowSize;
+    }   
+    // if we are more than BANG_OFF degrees above the setpoint, then always turn off
+    else if( inputTempC - BANG_OFF_C > setPointTempC ) {
+      myPID.SetMode(MANUAL);
+      pidOutput = 0;
+    }
+    else {
+      myPID.SetMode(AUTOMATIC);
+    }
+  }
+  
   myPID.Compute();
   
   // Show Output
   lcd.setCursor(0, 1);
   sprintf(degreesBuff, "%4d", (int)pidOutput);
   lcd.print(degreesBuff);
- 
-  // if we are more than BANG_ON degrees below the setpoint, then always turn on the relay.
-  if( inputTempC + BANG_ON_C < setPointTempC ) setRelay(true);
-  // if we are more than BANG_OFF degrees above the setpoint, then always turn
-  else if( inputTempC - BANG_OFF_C > setPointTempC ) setRelay(false);
-  else {
-    // if we are inside the BANG range, turn on the relay for a portion of the Relay Window
-    // based on the pidOutput
-    unsigned long now = millis();
-    if (now - windowStartTime > WindowSize) { //time to shift the Relay Window
-      windowStartTime += WindowSize;
-    }    
-    setRelay(pidOutput > now - windowStartTime);
-  }
+
+  // if we are inside the BANG range, turn on the relay for a portion of the Relay Window
+  // based on the pidOutput
+  unsigned long now = millis();
+  if (now - windowStartTime > WindowSize) { //time to shift the Relay Window
+    windowStartTime += WindowSize;
+  }    
+  setRelay(pidOutput > now - windowStartTime);
 }
 
 ////////////////////////////////
@@ -333,22 +350,15 @@ void setRelay(bool enabled) {
 ////////////////////////////////
 // Temperature
 ////////////////////////////////
-//return true if the temp has changed.
-bool updateTemp() {
+void updateTemp() {
   int now = millis();
   if(now - lastTempReadTime < tempReadInterval) return false;
   lastTempReadTime = now;
-  float newTemp = thermocouple.readCelsius();
+  inputTempC = thermocouple.readCelsius();
   
-  Serial.print("Read temp:");
-  Serial.print(newTemp);
-  Serial.println("°C");
-  
-  if(newTemp == inputTempC) {
-    return false;
-  }
-  inputTempC = newTemp;
-  return true;
+//  Serial.print("Read temp:");
+//  Serial.print(inputTempC);
+//  Serial.println("°C");
 }
 
 void printDegrees(double tempC) {
@@ -371,7 +381,9 @@ float fToC(float f) {
 }
 
 void setDisplayCelsius(boolean newDisplayCelsius) {
-  if(newDisplayCelsius == displayCelsius) return;
+  if(displayCelsius == newDisplayCelsius) return;
+  Serial.print("set displayCelsius: ");
+  Serial.println(newDisplayCelsius);
   displayCelsius = newDisplayCelsius;
 }
 
@@ -380,20 +392,23 @@ void setDisplayCelsius(boolean newDisplayCelsius) {
 //////////////////////////////
 void setupToggle() {
   pinMode(TOGGLE_BUTTON_PIN, INPUT);
+  lastToggleTime = millis();
+  toggleState = displayCelsius;
 }
 
 void updateToggleState() {
-  boolean isPushed = digitalRead(TOGGLE_BUTTON_PIN);
-  long now = millis();
+  int toggleRead = digitalRead(TOGGLE_BUTTON_PIN);
 
-  boolean inDebounce = now - lastTogglePush <= TOGGLE_DEBOUNCE;
-  if(!wasPushed && isPushed && !inDebounce) {
+  // if the input just went from HIGH to LOW and we've waited long enough
+  // to ignore any noise on the circuit, toggle the output pin and remember
+  // the time
+  if (toggleRead == LOW && togglePrevious == HIGH && millis() - lastToggleTime > TOGGLE_DEBOUNCE) {
     toggleState = !toggleState;
-    lastTogglePush = now;
-    setDisplayCelsius(toggleState);
+    lastToggleTime = millis();    
   }
-  if(!inDebounce) {
-    wasPushed = isPushed;
-  }
+
+  setDisplayCelsius(toggleState);
+
+  togglePrevious = toggleRead;  
 }
 
