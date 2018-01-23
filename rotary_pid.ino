@@ -8,11 +8,11 @@
 #include <EEPROM.h>
 
 #define LCD_ADDR 0x27
-LiquidCrystal_I2C lcd(0x27,16,2); // RS, E, D4, D5, D6, D7
+LiquidCrystal_I2C lcd(0x27, 16, 2); // RS, E, D4, D5, D6, D7
 
-MAX6675 thermocouple(10, 11, 12); // CLK, CS, D0
+MAX6675 thermocouple(11, 10, 9); // CLK, CS, D0
 
-#define RELAY_PIN 13
+#define RELAY_PIN 12
 
 #define DEGREE_CHAR 0
 byte degreeChar[8]  = {
@@ -111,7 +111,7 @@ boolean encoderWasFast = false;
 //////////////////////////////
 // Toggle Button
 //////////////////////////////
-#define TOGGLE_BUTTON_PIN A0
+#define TOGGLE_BUTTON_PIN 4
 #define TOGGLE_DEBOUNCE 200
 boolean toggleState = false;
 long lastTogglePush = 0;
@@ -216,6 +216,9 @@ void readEncoder() {
     return;
   }
 
+  Serial.print("Encoder delta: ");
+  Serial.println(delta);
+  
   oldEncoderPos = currentPos;
 
   double deltaAbs = fabs(delta);
@@ -275,6 +278,10 @@ void setDisplaySetPointTemp(double newSetPoint) {
   if(newSetPoint == setPointTempC) return;
 
   setPointTempC = newSetPoint;
+
+  Serial.print("New set point: ");
+  Serial.print(setPointTempC);
+  Serial.println("°C");
 }
 
 // Write the settings if theyhave changed. Will only write as often as SETTINGS_WRITE_INTERVAL.
@@ -332,9 +339,11 @@ bool updateTemp() {
   if(now - lastTempReadTime < tempReadInterval) return false;
   lastTempReadTime = now;
   float newTemp = thermocouple.readCelsius();
-  //Serial.print("Read temp:");
-  //Serial.print(newTemp);
-  //Serial.println(" degrees C");
+  
+  Serial.print("Read temp:");
+  Serial.print(newTemp);
+  Serial.println("°C");
+  
   if(newTemp == inputTempC) {
     return false;
   }
