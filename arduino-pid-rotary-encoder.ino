@@ -22,6 +22,7 @@
 LiquidCrystal_I2C lcd(LCD_ADDR, 16, 2);
 
 MAX6675 thermocouple(11, 10, 9); // CLK, CS, D0
+MAX6675 thermocouple2(7, 6, 5); // CLK, CS, D0
 
 #define RELAY_PIN 12
 
@@ -51,7 +52,7 @@ byte upChar[8] = {
 
 #define DEFAULT_SET_POINT_C 371.111  // 700°F
 #define MIN_SET_POINT_C 0.0  // °C
-#define MAX_SET_POINT_C 1024.0  // °C
+#define MAX_SET_POINT_C 537.222  // 999°F
 #define BANG_ON_C 27.77777 // 50°F Turn relay fully on if PV is more than this below the setpoint
 #define BANG_OFF_C 13.88888 // 25°F Turn relay fully off if PV is more than this above the setpoint
 
@@ -59,6 +60,7 @@ byte upChar[8] = {
 // PID 
 //////////////////////////////
 double inputTempC; // °C
+double input2TempC; // °C
 double setPointTempC = -1.0; // °C
 double pidOutput;
 
@@ -143,10 +145,12 @@ void setup() {
   lcd.createChar(DEGREE_CHAR, degreeChar);
   lcd.createChar(UP_CHAR, upChar);
  
-  lcd.setCursor(7, 0);
+  lcd.setCursor(0, 0);
   lcd.print("S:");
-  lcd.setCursor(7, 1);
+  lcd.setCursor(8, 0);
   lcd.print("P:");
+  lcd.setCursor(7,1);
+  lcd.print("P2:");
 }
 
 void loop() {
@@ -156,20 +160,24 @@ void loop() {
   updateSettings();
   
   // Show setpoint temp
-  lcd.setCursor(9, 0);
+  lcd.setCursor(2, 0);
   printDegrees(setPointTempC);
 
   updateTemp();
-    
+
+  lcd.setCursor(10,0); // probe 1 temp
+  printDegrees(inputTempC);
+  
+  lcd.setCursor(10,1); // probe 2 temp
+  printDegrees(input2TempC);
+  
   if( isnan(inputTempC) ) {
     // No probe is connected, there is nothing to do.
-    lcd.setCursor(9,1);
-    lcd.print("------");
     myPID.SetMode(MANUAL);
     pidOutput = 0;
   } else {
     // Show current temp
-    lcd.setCursor(9, 1);
+    lcd.setCursor(10, 0);
     printDegrees(inputTempC);
 
     // if we are more than BANG_ON degrees below the setpoint, then always turn on the relay.
@@ -341,7 +349,7 @@ void setRelay(bool enabled) {
   digitalWrite(RELAY_PIN, enabled ? HIGH : LOW);
 
   // set the lcd indicator
-  lcd.setCursor(15, 1);
+  lcd.setCursor(15, 0);
   if(enabled) lcd.write((byte) UP_CHAR);
   else lcd.print(" ");
 }
@@ -354,17 +362,21 @@ void updateTemp() {
   if(now - lastTempReadTime < tempReadInterval) return false;
   lastTempReadTime = now;
   inputTempC = thermocouple.readCelsius();
-  
+  input2TempC = thermocouple2.readCelsius();
 //  Serial.print("Read temp:");
 //  Serial.print(inputTempC);
 //  Serial.println("°C");
 }
 
 void printDegrees(double tempC) {
+  if( isnan(tempC) ) {
+    lcd.print("-----");
+    return;
+  }
   double temp = tempC;
   if(!displayCelsius) temp = cToF(tempC);
   temp = round(temp);
-  sprintf(degreesBuff, "%4d", (int)temp);
+  sprintf(degreesBuff, "%3d", (int)temp);
   lcd.print(degreesBuff);
   lcd.write((byte)DEGREE_CHAR);
   if(displayCelsius) lcd.print("C");
