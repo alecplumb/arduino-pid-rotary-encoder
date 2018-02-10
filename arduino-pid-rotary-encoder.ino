@@ -363,8 +363,11 @@ void updateTemp() {
   lastTempReadTime = now;
   inputTempC = thermocouple.readCelsius();
   input2TempC = thermocouple2.readCelsius();
-//  Serial.print("Read temp:");
+//  Serial.print("Read temp 1:");
 //  Serial.print(inputTempC);
+//  Serial.print("°C");
+//  Serial.print(", temp2: ");
+//  Serial.print(input2TempC);
 //  Serial.println("°C");
 }
 
